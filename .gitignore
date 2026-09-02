@@ -2,10 +2,11 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+.paddlex-cache/
+.paddle-cache/
 data/*.db
 data/*.db-*
 data/uploads/*
 data/logs/*
 !.gitkeep
 .env
-
