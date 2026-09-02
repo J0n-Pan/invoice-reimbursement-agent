@@ -12,13 +12,22 @@
 ## Windows 启动
 
 1. 安装 Python 3.10 或更高版本。
-2. 双击 start_windows.bat，或在 PowerShell 中运行：
+2. 首次启用真实 OCR 时，在项目目录打开 PowerShell：
 
    ~~~powershell
-   python app.py
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   python -m pip install --upgrade pip
+   python -m pip install -r requirements-ocr.txt
    ~~~
 
-3. 浏览器打开 http://127.0.0.1:8765。
+3. 双击 start_windows.bat，或在 PowerShell 中运行：
+
+   ~~~powershell
+   .\.venv\Scripts\python.exe app.py
+   ~~~
+
+4. 浏览器打开 http://127.0.0.1:8765。
 
 基础演示模式只使用 Python 标准库，不需要安装第三方依赖。页面中的“运行示例流程”会演示合规、不合规和待复核三种结果。
 
@@ -33,16 +42,7 @@ python app.py
 
 ## 启用真实 OCR
 
-在干净的 Python 虚拟环境中按 PaddleOCR 官方文档安装 OCR 包和对应推理引擎：
-
-~~~powershell
-python -m venv .venv
-.\\.venv\\Scripts\\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements-ocr.txt
-~~~
-
-不同 Windows/Python 环境的推理引擎依赖可能不同，请以 PaddleOCR 官方安装说明为准。安装成功后重新启动 app.py，界面会自动切换为“真实 OCR”。
+项目已固定 Windows CPU 版 PaddlePaddle 3.2.0 和 PaddleOCR 3.7.0，并包含文档/表格解析依赖。首次运行真实 OCR 时会自动下载识别模型，模型缓存保存在项目目录的 `.paddlex-cache` 中。安装成功后重新启动 app.py，界面会自动切换为“真实 OCR”。
 
 ## 目录说明
 
