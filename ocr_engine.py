@@ -6,11 +6,17 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 _engine: Any = None
 _engine_error: str = ""
+
+# Keep PaddleX's model/temp cache beside the project so Windows startup does
+# not depend on write access to a user-profile cache directory.
+_PROJECT_CACHE = Path(__file__).resolve().parent / ".paddlex-cache"
+os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(_PROJECT_CACHE))
 
 
 def _get_engine() -> Any:
@@ -99,4 +105,3 @@ def recognize(file_path: str | None) -> dict[str, Any]:
             "confidence": 0,
             "error": f"OCR 调用失败：{exc}",
         }
-
