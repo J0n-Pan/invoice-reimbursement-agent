@@ -22,6 +22,15 @@
 
 基础演示模式只使用 Python 标准库，不需要安装第三方依赖。页面中的“运行示例流程”会演示合规、不合规和待复核三种结果。
 
+上传接口会先创建任务，再交给后台并行 Worker 处理；默认 4 个 Worker，可在 PowerShell 中按机器性能调整：
+
+~~~powershell
+$env:AGENT_WORKERS = "8"
+python app.py
+~~~
+
+建议先用真实发票样本压测，再决定 Worker 数量。系统会在每一步保存任务状态，单张失败不会中断整批处理。
+
 ## 启用真实 OCR
 
 在干净的 Python 虚拟环境中按 PaddleOCR 官方文档安装 OCR 包和对应推理引擎：
@@ -50,4 +59,3 @@ python -m pip install -r requirements-ocr.txt
 当前版本不会连接真实财务系统。通过审核的任务会标记为“已登记”，真正接入时在 finance_adapter.py 中补充 API 或批量导入逻辑即可。
 
 所有任务均保留状态、识别置信度和判断原因；真实 OCR 识别失败或字段缺失时转入“待复核”，不会自动通过。
-

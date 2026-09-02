@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import base64
 import binascii
+import os
 import json
 import mimetypes
+from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -27,6 +29,17 @@ ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
 HOST = "127.0.0.1"
 PORT = 8765
+AGENT_WORKERS = max(1, min(int(os.environ.get("AGENT_WORKERS", "4")), 16))
+PROCESS_POOL = ThreadPoolExecutor(max_workers=AGENT_WORKERS, thread_name_prefix="invoice-agent")
+
+
+def submit_job(job_id: str) -> None:
+    PROCESS_POOL.submit(process_invoice, job_id)
+
+
+def resume_pending_jobs() -> None:
+    for item in list_invoices(status="pending", limit=200):
+        submit_job(item["id"])
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -85,8 +98,10 @@ class Handler(BaseHTTPRequestHandler):
                 file_name = str(payload.get("file_name", "发票文件"))
                 content = base64.b64decode(payload.get("content_base64", ""), validate=True)
                 job_id = create_upload(file_name, content)
-                item = process_invoice(job_id)
-                return self.send_json(item)
+                item = get_invoice(job_id)
+                if item["status"] == "pending":
+                    submit_job(job_id)
+                return self.send_json(get_invoice(job_id), HTTPStatus.ACCEPTED)
             if parsed.path.startswith("/api/process/"):
                 job_id = parsed.path.rsplit("/", 1)[-1]
                 return self.send_json(process_invoice(job_id))
@@ -109,19 +124,20 @@ class Handler(BaseHTTPRequestHandler):
         content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
         return self.send_bytes(target.read_bytes(), f"{content_type}; charset=utf-8" if content_type.startswith("text/") else content_type)
 
-
 def run() -> None:
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"发票报销 Agent 已启动：http://{HOST}:{PORT}")
+    print(f"后台处理并发数：{AGENT_WORKERS}")
     print("按 Ctrl+C 停止服务")
+    resume_pending_jobs()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\n正在停止…")
     finally:
         server.server_close()
+        PROCESS_POOL.shutdown(wait=True, cancel_futures=True)
 
 
 if __name__ == "__main__":
     run()
-
