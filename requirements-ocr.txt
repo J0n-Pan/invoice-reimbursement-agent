@@ -1,0 +1,3 @@
+# 可选：真实 OCR 能力。请根据 Windows/Python 环境选择官方支持的推理引擎。
+paddleocr
+

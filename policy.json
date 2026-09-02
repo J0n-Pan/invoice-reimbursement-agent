@@ -1,0 +1,12 @@
+{
+  "name": "企业内部发票基础报销规则",
+  "required_fields": ["invoice_no", "invoice_date", "seller", "buyer", "total"],
+  "amount_tolerance": 0.02,
+  "low_confidence_threshold": 0.8,
+  "review_when_missing_field": true,
+  "finance_system": {
+    "status": "待接入",
+    "adapter": "finance_adapter.py"
+  }
+}
+
