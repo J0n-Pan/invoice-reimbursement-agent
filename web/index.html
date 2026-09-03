@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>票据流 Agent · 发票报销工作台</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">流</div>
+        <div><strong>票据流 Agent</strong><span>企业财务自动化</span></div>
+      </div>
+      <nav class="nav" aria-label="主导航">
+        <button class="nav-item active" data-view="dashboard"><span>▦</span>处理概览</button>
+        <button class="nav-item" data-view="tasks"><span>▤</span>发票任务</button>
+        <button class="nav-item" data-view="review"><span>◷</span>待复核 <em id="nav-review">0</em></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="engine-status"><i></i><div><small>当前识别模式</small><strong id="engine-mode">演示模式</strong></div></div>
+        <div class="side-note">财务系统适配器<br><span>待接入</span></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><div class="eyebrow">企业内部财务报销</div><h1>发票报销工作台</h1><p>从扫描到登记，全流程自动留痕</p></div>
+        <div class="top-actions"><button class="button ghost" id="refresh-btn">↻ 刷新</button><a class="button ghost" href="/api/export" download="发票任务.csv">导出任务</a></div>
+      </header>
+
+      <section id="dashboard-view" class="view">
+        <div class="stats-grid">
+          <article class="stat-card featured"><div class="stat-icon">✓</div><div><span>今日已处理</span><strong id="processed-count">0</strong><small>目标 10,000 张</small></div></article>
+          <article class="stat-card"><div class="stat-icon green">↗</div><div><span>合规并登记</span><strong id="registered-count">0</strong><small>进入报销名单</small></div></article>
+          <article class="stat-card"><div class="stat-icon red">!</div><div><span>不合规</span><strong id="noncompliant-count">0</strong><small>已录入文档</small></div></article>
+          <article class="stat-card"><div class="stat-icon amber">◷</div><div><span>待复核</span><strong id="review-count">0</strong><small>需要人工确认</small></div></article>
+        </div>
+
+        <div class="content-grid">
+          <section class="panel throughput-panel">
+            <div class="panel-heading"><div><span class="section-kicker">今日处理进度</span><h2>批量处理概览</h2></div><span class="badge blue">自动运行中</span></div>
+            <div class="progress-wrap"><div class="progress-label"><strong id="progress-percent">0%</strong><span>目标完成度</span></div><div class="progress"><i id="progress-bar"></i></div><div class="progress-foot"><span id="progress-text">已处理 0 / 10,000 张</span><span id="processing-text">0 张处理中</span></div></div>
+            <div class="flow-strip"><div><span class="flow-number">01</span><strong>扫描</strong><small>收集纸质发票</small></div><b>→</b><div><span class="flow-number">02</span><strong>OCR识别</strong><small>文字 + 表格</small></div><b>→</b><div><span class="flow-number">03</span><strong>Skill判断</strong><small>执行报销规则</small></div><b>→</b><div><span class="flow-number">04</span><strong>登记</strong><small>等待财务系统接入</small></div></div>
+          </section>
+
+          <section class="panel quick-panel">
+            <div class="panel-heading"><div><span class="section-kicker">快速操作</span><h2>提交发票任务</h2></div><span class="spark">✦</span></div>
+            <label class="upload-zone" id="upload-zone" for="file-input"><span class="upload-icon">↑</span><strong>拖入或选择发票文件</strong><small>支持 JPG、PNG、PDF，可同时上传多个文件，单个文件不超过 25MB</small><input id="file-input" type="file" accept=".jpg,.jpeg,.png,.pdf" multiple></label>
+            <button class="button primary full" id="demo-btn">运行示例流程 <span>→</span></button>
+            <p class="hint">示例会完整演示合规、不合规和人工复核三种结果。</p>
+          </section>
+        </div>
+
+      </section>
+
+      <section id="tasks-view" class="subpage" hidden>
+        <div class="page-heading"><div><span class="section-kicker">任务流</span><h2>发票任务</h2><p>查看全部发票任务及处理结果</p></div><span class="badge blue">任务追踪</span></div>
+        <section class="panel recent-panel">
+          <div class="panel-heading"><div><span class="section-kicker">处理记录</span><h2 id="tasks-list-title">全部任务</h2></div><div class="task-tools"><div class="search-box"><input id="task-search" type="search" placeholder="搜索发票号码、购买方、销售方或文件名" aria-label="搜索发票任务"><button class="button ghost" id="task-search-btn" type="button">搜索</button></div><div class="tabs"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="registered">已登记</button><button class="tab" data-filter="noncompliant">不合规</button><button class="tab" data-filter="review">待复核</button></div></div></div>
+          <div class="table-wrap"><table><thead><tr><th>文件</th><th>发票号码</th><th>识别置信度</th><th>状态</th><th>更新时间</th><th></th></tr></thead><tbody id="tasks-table"></tbody></table><div class="empty" id="tasks-empty-state" hidden>暂无匹配任务</div></div>
+        </section>
+      </section>
+
+      <section id="review-view" class="subpage" hidden>
+        <div class="page-heading"><div><span class="section-kicker">人工处理</span><h2>待复核发票</h2><p>集中查看需要财务人员确认的发票任务</p></div><span class="badge amber">待复核</span></div>
+        <section class="panel recent-panel">
+          <div class="panel-heading"><div><span class="section-kicker">复核队列</span><h2>待复核任务</h2></div><span class="review-count-label"><strong id="review-page-count">0</strong> 张待处理</span></div>
+          <div class="table-wrap"><table><thead><tr><th>文件</th><th>发票号码</th><th>识别置信度</th><th>状态</th><th>更新时间</th><th></th></tr></thead><tbody id="review-table"></tbody></table><div class="empty" id="review-empty-state" hidden>暂无待复核任务</div></div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="modal" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button class="modal-close" id="modal-close">×</button><span class="section-kicker">任务详情</span><h2 id="modal-title">发票任务</h2><div id="modal-body"></div><div class="modal-actions" id="modal-actions"></div></section></div>
+  <div class="toast" id="toast" role="status"></div>
+  <style>.upload-zone.dragging{border-color:#2878c8;background:#eaf3fc;box-shadow:0 0 0 3px rgba(40,120,200,.1)}.task-tools{display:flex;flex-direction:column;align-items:flex-end;gap:10px}.search-box{display:flex;gap:6px}.search-box input{width:300px;border:1px solid #dfe7ed;border-radius:8px;padding:9px 11px;color:#30495d;outline:none}.search-box input:focus{border-color:#78afd2;box-shadow:0 0 0 3px rgba(40,120,200,.1)}@media(max-width:650px){.task-tools{align-items:stretch}.search-box input{width:100%}}</style>
+  <script src="/app.js?v=search-naming"></script>
+</body>
+</html>

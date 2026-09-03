@@ -1,0 +1,3 @@
+# 基础演示模式只使用 Python 标准库，无需安装第三方包。
+# 如需真实 OCR，请按 README.md 安装 PaddleOCR 及对应推理引擎。
+
