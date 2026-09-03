@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
 DB_PATH = DATA_DIR / "invoice_agent.db"
+POLICY_PATH = ROOT / "policy.json"
 
 STATUS_LABELS = {
     "registered": "已登记",
@@ -36,6 +37,32 @@ STATUS_LABELS = {
 
 def now_iso() -> str:
     return datetime.now().replace(microsecond=0).isoformat(sep=" ")
+
+
+def load_policy() -> dict[str, Any]:
+    """读取可热修改的合规规则；配置损坏时回退到保守默认值。"""
+    defaults: dict[str, Any] = {
+        "required_fields": ["invoice_no", "invoice_date", "seller", "buyer", "total"],
+        "amount_tolerance": 0.02,
+        "low_confidence_threshold": 0.85,
+        "auto_register_invoice_limit": 3000,
+        "manual_review_invoice_limit": 10000,
+        "requires_tax_verification": True,
+        "requires_business_context": True,
+        "requires_payment_proof": True,
+        "review_when_missing_field": True,
+        "business_entertainment_tax_deduction": {
+            "actual_expense_rate": 0.6,
+            "annual_sales_rate": 0.005,
+        },
+    }
+    try:
+        loaded = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            defaults.update(loaded)
+    except (OSError, json.JSONDecodeError):
+        pass
+    return defaults
 
 
 def ensure_dirs() -> None:
@@ -216,7 +243,12 @@ def create_upload(file_name: str, content: bytes) -> str:
         )
 
 
-def process_invoice(job_id: str, manual_fields: dict[str, Any] | None = None) -> dict[str, Any]:
+def process_invoice(
+    job_id: str,
+    manual_fields: dict[str, Any] | None = None,
+    claim_context: dict[str, Any] | None = None,
+    tax_verification: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     with connect() as conn:
         row = conn.execute("SELECT * FROM invoices WHERE id = ?", (job_id,)).fetchone()
         if not row:
@@ -231,7 +263,27 @@ def process_invoice(job_id: str, manual_fields: dict[str, Any] | None = None) ->
             ocr_result = recognize(row["file_path"])
             fields = normalize_fields(extract_fields(ocr_result))
 
-        decision = evaluate_compliance(fields, job_id, ocr_result)
+        # 演示数据明确模拟了税务查验、业务关联、审批和付款凭证均已齐备。
+        # 真实上传若未传入这些外部证据，会按 Skill 规则进入人工复核。
+        if manual_fields is not None:
+            claim_context = claim_context or {
+                "business_related": True,
+                "business_purpose": "演示业务",
+                "approval": True,
+                "payment_proof": True,
+            }
+            tax_verification = tax_verification or {"status": "valid", "source": "演示数据"}
+
+        decision = evaluate_compliance(
+            fields,
+            job_id,
+            ocr_result,
+            claim_context=claim_context,
+            tax_verification=tax_verification,
+        )
+        fields["suggested_reimbursable_amount"] = decision.get("suggested_reimbursable_amount")
+        fields["reimbursable_amount"] = decision.get("reimbursable_amount")
+        fields["tax_deductible_amount"] = decision.get("tax_deductible_amount")
         status = {"PASS": "registered", "REJECT": "noncompliant", "REVIEW": "review"}[decision["status"]]
         with connect() as conn:
             conn.execute(
@@ -358,18 +410,94 @@ def extract_fields(ocr_result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def evaluate_compliance(fields: dict[str, Any], job_id: str, ocr_result: dict[str, Any]) -> dict[str, str]:
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "是", "有", "通过", "有效"}
+
+
+def _verification_status(value: Any) -> str:
+    if isinstance(value, dict):
+        value = value.get("status", "")
+    return str(value or "").strip().lower()
+
+
+def calculate_amounts(
+    fields: dict[str, Any],
+    policy: dict[str, Any],
+    claim_context: dict[str, Any] | None,
+) -> dict[str, float | None]:
+    """计算建议报销额；没有业务额度数据时，不擅自替用户截断金额。"""
+    total = parse_money(fields.get("total"))
+    if total is None or total <= 0:
+        return {
+            "suggested_reimbursable_amount": None,
+            "reimbursable_amount": None,
+            "tax_deductible_amount": None,
+        }
+
+    context = claim_context or {}
+    candidates = [total]
+    for key in ("category_limit", "category_remaining", "budget_remaining"):
+        value = parse_money(context.get(key))
+        if value is not None:
+            candidates.append(max(0.0, value))
+    suggested = round(min(candidates), 2)
+    auto_limit = parse_money(policy.get("auto_register_invoice_limit")) or 0.0
+    result: dict[str, float | None] = {
+        "suggested_reimbursable_amount": suggested,
+        "reimbursable_amount": suggested if total <= auto_limit else None,
+        "tax_deductible_amount": None,
+    }
+
+    category = str(context.get("expense_category", "")).strip().lower()
+    is_entertainment = any(word in category for word in ("业务招待", "招待费", "business entertainment", "entertainment"))
+    annual_sales = parse_money(context.get("annual_sales"))
+    entertainment_rule = policy.get("business_entertainment_tax_deduction", {})
+    if is_entertainment and annual_sales is not None and isinstance(entertainment_rule, dict):
+        actual_rate = float(entertainment_rule.get("actual_expense_rate", 0.6))
+        sales_rate = float(entertainment_rule.get("annual_sales_rate", 0.005))
+        result["tax_deductible_amount"] = round(min(total * actual_rate, annual_sales * sales_rate), 2)
+    return result
+
+
+def evaluate_compliance(
+    fields: dict[str, Any],
+    job_id: str,
+    ocr_result: dict[str, Any],
+    claim_context: dict[str, Any] | None = None,
+    tax_verification: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    policy = load_policy()
     hard_fails: list[str] = []
     reviews: list[str] = []
-    required = {"invoice_no": "发票号码", "invoice_date": "开票日期", "seller": "销售方", "buyer": "购买方", "total": "价税合计"}
-    missing = [label for key, label in required.items() if not fields.get(key)]
+    required_labels = {
+        "invoice_no": "发票号码",
+        "invoice_date": "开票日期",
+        "seller": "销售方",
+        "buyer": "购买方",
+        "total": "价税合计",
+    }
+    required_keys = policy.get("required_fields") or list(required_labels)
+    missing = [required_labels.get(key, key) for key in required_keys if not fields.get(key)]
     if missing:
         reviews.append("缺少：" + "、".join(missing))
 
     amount, tax, total = fields.get("amount"), fields.get("tax"), fields.get("total")
-    if total is not None and total <= 0:
+    tolerance = float(policy.get("amount_tolerance", 0.02))
+    context = claim_context or {}
+    invoice_type = f"{fields.get('invoice_type', '')}{context.get('invoice_type', '')}"
+    is_red_invoice = (
+        _truthy(fields.get("red_invoice"))
+        or _truthy(context.get("red_invoice"))
+        or "红字" in invoice_type
+        or "负数" in invoice_type
+    )
+    if is_red_invoice:
+        reviews.append(str(policy.get("red_invoice_action", "红字/负数发票需人工复核")))
+    if total is not None and total <= 0 and not is_red_invoice:
         hard_fails.append("价税合计必须大于 0")
-    if amount is not None and tax is not None and total is not None and abs(amount + tax - total) > 0.02:
+    if amount is not None and tax is not None and total is not None and abs(amount + tax - total) > tolerance:
         hard_fails.append("金额、税额与价税合计不一致")
 
     invoice_no = fields.get("invoice_no")
@@ -389,14 +517,48 @@ def evaluate_compliance(fields: dict[str, Any], job_id: str, ocr_result: dict[st
             if ocr_error
             else "未安装 OCR 引擎，无法完成真实识别"
         )
-    elif float(fields.get("confidence", 0) or 0) < 0.80:
-        reviews.append("识别置信度低于 0.80")
+    elif float(fields.get("confidence", 0) or 0) < float(policy.get("low_confidence_threshold", 0.85)):
+        reviews.append(f"识别置信度低于 {float(policy.get('low_confidence_threshold', 0.85)):.2f}")
 
+    if total is not None:
+        auto_limit = float(policy.get("auto_register_invoice_limit", 3000))
+        manual_limit = float(policy.get("manual_review_invoice_limit", 10000))
+        if total > manual_limit:
+            reviews.append(f"价税合计超过 {manual_limit:.2f} 元，需财务负责人审批")
+        elif total > auto_limit:
+            reviews.append(f"价税合计超过自动登记上限 {auto_limit:.2f} 元，需财务复核")
+
+    if _truthy(policy.get("requires_tax_verification", True)):
+        status = _verification_status(tax_verification)
+        if not status:
+            reviews.append("未完成税务发票查验，需人工复核")
+        elif status in {"invalid", "void", "fake", "not_found", "不通过", "作废", "无效", "假票"}:
+            hard_fails.append("税务发票查验未通过")
+        elif status not in {"valid", "verified", "success", "通过", "有效"}:
+            reviews.append("税务发票查验结果不明确，需人工复核")
+
+    if _truthy(policy.get("requires_business_context", True)):
+        if not claim_context:
+            reviews.append("缺少业务用途、审批和付款凭证，需人工复核")
+        else:
+            business_related = context.get("business_related")
+            if business_related is False or str(business_related).strip().lower() in {"false", "否", "无关"}:
+                hard_fails.append("支出与企业经营活动无关")
+            elif not context.get("business_purpose") and business_related is not True:
+                reviews.append("缺少业务用途说明")
+            if not _truthy(context.get("approval") or context.get("approved")):
+                reviews.append("缺少审批记录")
+            if _truthy(policy.get("requires_payment_proof", True)) and not _truthy(
+                context.get("payment_proof") or context.get("paid")
+            ):
+                reviews.append("缺少付款凭证")
+
+    amounts = calculate_amounts(fields, policy, claim_context)
     if hard_fails:
-        return {"status": "REJECT", "reason": "；".join(hard_fails)}
+        return {"status": "REJECT", "reason": "；".join(hard_fails), **amounts, "reimbursable_amount": None}
     if reviews:
-        return {"status": "REVIEW", "reason": "；".join(reviews)}
-    return {"status": "PASS", "reason": "符合当前报销规则"}
+        return {"status": "REVIEW", "reason": "；".join(reviews), **amounts, "reimbursable_amount": None}
+    return {"status": "PASS", "reason": "符合当前报销规则", **amounts}
 
 
 def get_invoice(job_id: str) -> dict[str, Any]:

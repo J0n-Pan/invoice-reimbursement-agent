@@ -104,7 +104,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(get_invoice(job_id), HTTPStatus.ACCEPTED)
             if parsed.path.startswith("/api/process/"):
                 job_id = parsed.path.rsplit("/", 1)[-1]
-                return self.send_json(process_invoice(job_id))
+                return self.send_json(
+                    process_invoice(
+                        job_id,
+                        manual_fields=payload.get("manual_fields"),
+                        claim_context=payload.get("claim_context"),
+                        tax_verification=payload.get("tax_verification"),
+                    )
+                )
             if parsed.path.startswith("/api/review/"):
                 job_id = parsed.path.rsplit("/", 1)[-1]
                 return self.send_json(review_invoice(job_id, payload.get("action", ""), payload.get("reason", "")))

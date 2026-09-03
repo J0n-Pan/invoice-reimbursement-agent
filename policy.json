@@ -1,12 +1,24 @@
 {
-  "name": "企业内部发票基础报销规则",
+  "name": "企业财务合规审核 Skill",
+  "version": "0.1",
+  "jurisdiction": "中国大陆",
   "required_fields": ["invoice_no", "invoice_date", "seller", "buyer", "total"],
   "amount_tolerance": 0.02,
-  "low_confidence_threshold": 0.8,
+  "low_confidence_threshold": 0.85,
+  "auto_register_invoice_limit": 3000,
+  "manual_review_invoice_limit": 10000,
+  "requires_tax_verification": true,
+  "requires_business_context": true,
+  "requires_payment_proof": true,
   "review_when_missing_field": true,
+  "red_invoice_action": "红字/负数发票人工复核并关联原蓝字发票",
+  "vat_input_deduction": "独立审核",
+  "business_entertainment_tax_deduction": {
+    "actual_expense_rate": 0.6,
+    "annual_sales_rate": 0.005
+  },
   "finance_system": {
     "status": "待接入",
     "adapter": "finance_adapter.py"
   }
 }
-

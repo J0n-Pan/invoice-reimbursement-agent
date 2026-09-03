@@ -19,6 +19,7 @@ async function request(url, options = {}) {
 function statusClass(status) { return ["registered", "noncompliant", "review", "processing", "pending"].includes(status) ? status : "review"; }
 function formatTime(value) { return value ? value.replace("T", " ").slice(5, 16) : "—"; }
 function confidence(value) { return value ? Math.round(value * 100) + "%" : "—"; }
+function money(value, fallback = "待确认") { return value == null ? fallback : "¥ " + Number(value).toFixed(2); }
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>'"]/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char])); }
 
 async function loadDashboard() {
@@ -53,7 +54,8 @@ async function openDetail(id) {
   try {
     const item = await request("/api/invoices/" + encodeURIComponent(id));
     $("#modal-title").textContent = item.file_name;
-    const values = [["任务编号", item.id], ["发票号码", item.invoice_no || "待识别"], ["开票日期", item.invoice_date || "待识别"], ["销售方", item.seller || "待识别"], ["购买方", item.buyer || "待识别"], ["价税合计", item.total == null ? "待识别" : "¥ " + Number(item.total).toFixed(2)], ["识别置信度", confidence(item.confidence)], ["处理状态", item.status_label]];
+    const fields = item.fields || {};
+    const values = [["任务编号", item.id], ["发票号码", item.invoice_no || "待识别"], ["开票日期", item.invoice_date || "待识别"], ["销售方", item.seller || "待识别"], ["购买方", item.buyer || "待识别"], ["价税合计", money(item.total, "待识别")], ["建议报销金额", money(fields.suggested_reimbursable_amount)], ["可登记金额", money(fields.reimbursable_amount, "需复核")], ["税前扣除参考", money(fields.tax_deductible_amount, "不适用")], ["识别置信度", confidence(item.confidence)], ["处理状态", item.status_label]];
     $("#modal-body").innerHTML = "<div class=\"detail-grid\">" + values.map(([label, value]) => "<div><span>" + label + "</span><strong>" + escapeHtml(value) + "</strong></div>").join("") + "</div><div class=\"reason-box\">" + escapeHtml(item.reason || "暂无说明") + "</div>";
     const actions = $("#modal-actions");
     actions.innerHTML = "";
@@ -112,4 +114,3 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".nav-item").forEach((nav) => nav.addEventListener("click", () => { document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active")); nav.classList.add("active"); state.filter = nav.dataset.view === "review" ? "review" : "all"; document.querySelectorAll(".tab").forEach((item) => item.classList.toggle("active", item.dataset.filter === state.filter)); loadInvoices(); }));
   refresh();
 });
-
