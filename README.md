@@ -42,7 +42,8 @@ python app.py
 
 ## 启用真实 OCR
 
-项目已固定 Windows CPU 版 PaddlePaddle 3.2.0 和 PaddleOCR 3.7.0，并包含文档/表格解析依赖。首次运行真实 OCR 时会自动下载识别模型，模型缓存保存在项目目录的 `.paddlex-cache` 中。安装成功后重新启动 app.py，界面会自动切换为“真实 OCR”。
+项目已固定 Windows CPU 版 PaddlePaddle 3.2.0 和 PaddleOCR 3.7.0，并包含文档/表格解析依赖。首次运行真实 OCR 时会自动下载识别模型，模型缓存默认保存在当前 Windows 用户的 `%LOCALAPPDATA%\InvoiceReimbursementAgent` 中。这样可以避免项目目录缓存由其他账号创建后产生权限错误；如果该目录不可写，程序会自动回退到项目目录的 `.cache`。
+
 
 ## 目录说明
 

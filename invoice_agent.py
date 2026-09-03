@@ -290,7 +290,8 @@ def parse_money(value: Any) -> float | None:
 
 
 def extract_fields(ocr_result: dict[str, Any]) -> dict[str, Any]:
-    text = " ".join(str(item) for item in ocr_result.get("texts", []))
+    lines = [str(item).strip() for item in ocr_result.get("texts", []) if str(item).strip()]
+    text = " ".join(lines)
 
     def find(patterns: list[str]) -> str:
         for pattern in patterns:
@@ -299,14 +300,60 @@ def extract_fields(ocr_result: dict[str, Any]) -> dict[str, Any]:
                 return match.group(1).strip(" ：:;")
         return ""
 
+    def find_name(heading: str) -> str:
+        """按发票版式，在购买方/销售方标题附近提取名称。"""
+        for index, line in enumerate(lines):
+            if heading not in line:
+                continue
+            for candidate in lines[index : index + 4]:
+                match = re.search(r"名称[：: ]*(.+)", candidate)
+                if match:
+                    return match.group(1).strip(" ：:;")
+        return ""
+
+    def money_values(value: str) -> list[str]:
+        return re.findall(r"[-−]?[¥￥]?\s*[0-9][0-9,]*\.[0-9]{1,2}", value)
+
+    # 电子发票常把“金额/税额/价税合计”的标题和值分开放置，不能只依赖
+    # “金额：xxx”这种单行格式。这里同时支持单行标签和合计区域的列顺序。
+    summary_values: list[str] = []
+    for index, line in enumerate(lines):
+        if line == "合计" or line.startswith("合计"):
+            for candidate in lines[index + 1 : index + 5]:
+                summary_values.extend(money_values(candidate))
+            break
+
+    amount = find([r"金额[：: ]*([-−]?[¥￥]?\s*[0-9,]+(?:\.[0-9]{1,2})?)"])
+    tax = find([r"税额[：: ]*([-−]?[¥￥]?\s*[0-9,]+(?:\.[0-9]{1,2})?)"])
+    if not amount and len(summary_values) >= 1:
+        amount = summary_values[0]
+    if not tax and len(summary_values) >= 2:
+        tax = summary_values[1]
+
+    total = find([
+        r"小写[^0-9¥￥]{0,10}[¥￥]?\s*([0-9,]+(?:\.[0-9]{1,2})?)",
+        r"价税合计[^0-9¥￥]{0,10}[¥￥]?\s*([0-9,]+(?:\.[0-9]{1,2})?)",
+    ])
+    if not total:
+        for index, line in enumerate(lines):
+            if "小写" in line or "价税合计" in line:
+                values = money_values(line)
+                if not values and index + 1 < len(lines):
+                    values = money_values(lines[index + 1])
+                if values:
+                    total = values[-1]
+                    break
+    if not total and len(summary_values) >= 3:
+        total = summary_values[2]
+
     return {
         "invoice_no": find([r"发票号码[：: ]*([0-9A-Za-z-]+)", r"号码[：: ]*([0-9A-Za-z-]{8,})"]),
         "invoice_date": find([r"开票日期[：: ]*([0-9]{4}[-/.年][0-9]{1,2}[-/.月][0-9]{1,2}日?)"]),
-        "seller": find([r"销售方[：: ]*(.{2,30})", r"名称[：: ]*(.{2,30})"]),
-        "buyer": find([r"购买方[：: ]*(.{2,30})"]),
-        "amount": find([r"金额[：: ]*([¥￥]?[0-9,]+(?:\.[0-9]{1,2})?)"]),
-        "tax": find([r"税额[：: ]*([¥￥]?[0-9,]+(?:\.[0-9]{1,2})?)"]),
-        "total": find([r"价税合计[：: ]*([¥￥]?[0-9,]+(?:\.[0-9]{1,2})?)", r"合计[：: ]*([¥￥]?[0-9,]+(?:\.[0-9]{1,2})?)"]),
+        "seller": find_name("销售方") or find([r"销售方[：: ]*(.{2,30})", r"名称[：: ]*(.{2,30})"]),
+        "buyer": find_name("购买方") or find([r"购买方[：: ]*(.{2,30})"]),
+        "amount": amount,
+        "tax": tax,
+        "total": total,
         "confidence": float(ocr_result.get("confidence", 0) or 0),
     }
 
@@ -336,7 +383,12 @@ def evaluate_compliance(fields: dict[str, Any], job_id: str, ocr_result: dict[st
             hard_fails.append("发票号码重复")
 
     if not ocr_result.get("available", False):
-        reviews.append("未安装 OCR 引擎，无法完成真实识别")
+        ocr_error = str(ocr_result.get("error", "")).strip()
+        reviews.append(
+            f"OCR 引擎未就绪：{ocr_error}"
+            if ocr_error
+            else "未安装 OCR 引擎，无法完成真实识别"
+        )
     elif float(fields.get("confidence", 0) or 0) < 0.80:
         reviews.append("识别置信度低于 0.80")
 
@@ -473,4 +525,3 @@ def export_csv() -> str:
 
 
 init_db()
-

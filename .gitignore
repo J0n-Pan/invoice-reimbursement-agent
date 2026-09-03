@@ -4,6 +4,7 @@ __pycache__/
 venv/
 .paddlex-cache/
 .paddle-cache/
+.cache/
 data/*.db
 data/*.db-*
 data/uploads/*

@@ -13,10 +13,43 @@ from typing import Any
 _engine: Any = None
 _engine_error: str = ""
 
-# Keep PaddleX's model/temp cache beside the project so Windows startup does
-# not depend on write access to a user-profile cache directory.
-_PROJECT_CACHE = Path(__file__).resolve().parent / ".paddlex-cache"
-os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(_PROJECT_CACHE))
+_PROJECT_ROOT = Path(__file__).resolve().parent
+
+
+def _writable_cache_root() -> Path:
+    """Choose a cache owned by the current Windows user.
+
+    The project cache can be created by the Codex sandbox or another account,
+    so reusing it may cause PermissionError when the user starts the app.
+    """
+    candidates: list[Path] = []
+    configured = os.environ.get("INVOICE_AGENT_CACHE_HOME", "").strip()
+    if configured:
+        candidates.append(Path(configured))
+    local_app_data = os.environ.get("LOCALAPPDATA", "").strip()
+    if local_app_data:
+        candidates.append(Path(local_app_data) / "InvoiceReimbursementAgent")
+    candidates.append(_PROJECT_ROOT / ".cache")
+
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / ".write-check"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+            return candidate
+        except OSError:
+            continue
+    return _PROJECT_ROOT / ".cache"
+
+
+_CACHE_ROOT = _writable_cache_root()
+_PADDLEX_CACHE = _CACHE_ROOT / "paddlex"
+_PADDLE_CACHE = _CACHE_ROOT / "paddle"
+_PADDLEX_CACHE.mkdir(parents=True, exist_ok=True)
+_PADDLE_CACHE.mkdir(parents=True, exist_ok=True)
+os.environ["PADDLE_PDX_CACHE_HOME"] = str(_PADDLEX_CACHE)
+os.environ["PADDLE_HOME"] = str(_PADDLE_CACHE)
 
 
 def _get_engine() -> Any:
