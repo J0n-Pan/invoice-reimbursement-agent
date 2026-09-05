@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>初始化 · 票据流 Agent</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/auth.css">
+</head>
+<body class="auth-page" data-page="setup">
+  <main class="auth-screen">
+    <section class="auth-card">
+      <div class="brand auth-brand"><div class="brand-mark">流</div><div><strong>票据流 Agent</strong><span>企业财务自动化</span></div></div>
+      <span class="section-kicker">首次使用</span>
+      <h1>初始化管理员账号</h1>
+      <p class="auth-help">请由系统管理员完成首次初始化，之后再创建员工和财务账号。</p>
+      <form id="setup-form" class="auth-form">
+        <label>管理员用户名<input id="setup-username" name="username" autocomplete="username" required autofocus></label>
+        <label>显示名称<input id="setup-display-name" name="display_name" required></label>
+        <label>初始密码<input id="setup-password" name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+        <button class="button primary full" type="submit">完成初始化 <span>→</span></button>
+      </form>
+      <p class="auth-error" id="auth-error" role="alert"></p>
+    </section>
+  </main>
+  <script src="/auth.js?v=company-v2"></script>
+</body>
+</html>

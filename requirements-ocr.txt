@@ -1,0 +1,4 @@
+# Windows CPU 版真实 OCR + 文档/表格解析。
+# 当前项目已在 Python 3.12 环境验证。
+paddlepaddle==3.2.0
+paddleocr[doc-parser]==3.7.0

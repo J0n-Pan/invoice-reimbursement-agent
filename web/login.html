@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 · 票据流 Agent</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/auth.css">
+</head>
+<body class="auth-page" data-page="login">
+  <main class="auth-screen">
+    <section class="auth-card">
+      <div class="brand auth-brand"><div class="brand-mark">流</div><div><strong>票据流 Agent</strong><span>企业财务自动化</span></div></div>
+      <span class="section-kicker">安全登录</span>
+      <h1>登录发票报销工作台</h1>
+      <p class="auth-help">请使用公司分配的账号登录，发票数据按账号权限隔离。</p>
+      <form id="login-form" class="auth-form">
+        <label>用户名<input id="login-username" name="username" autocomplete="username" required autofocus></label>
+        <label>密码<input id="login-password" name="password" type="password" autocomplete="current-password" required></label>
+        <button class="button primary full" type="submit">登录 <span>→</span></button>
+      </form>
+      <p class="auth-error" id="auth-error" role="alert"></p>
+    </section>
+  </main>
+  <script src="/auth.js?v=company-v2"></script>
+</body>
+</html>
